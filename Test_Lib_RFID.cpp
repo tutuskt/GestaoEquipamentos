@@ -30,8 +30,28 @@ void setup() {
   // Inicia MFRC522
   mfrc522.PCD_Init(); 
   // Mensagens iniciais no serial monitor
-  Serial.println("\nAproxime o seu cartao do leitor...\n");
+  Serial.println("Aproxime o seu cartao do leitor...");
+  Serial.println();
 
+}
+
+//menu para escolha da operação
+int menu()
+{
+  Serial.println(F("\nEscolha uma opção:"));
+  Serial.println(F("0 - Leitura de Dados"));
+
+  //fica aguardando enquanto o usuário nao enviar algum dado
+  while(!Serial.available()){};
+
+  //recupera a opção escolhida
+  int op = (int)Serial.read();
+  //remove os proximos dados (como o 'enter ou \n' por exemplo) que vão por acidente
+  while(Serial.available()) {
+    if(Serial.read() == '\n') break; 
+    Serial.read();
+  }
+  return (op-48);//do valor lido, subtraimos o 48 que é o ZERO da tabela ascii
 }
 
 //faz a leitura dos dados do cartão/tag
@@ -49,6 +69,7 @@ void leituraDados()
   //bloco que faremos a operação
   byte bloco = 1;
   byte tamanho = SIZE_BUFFER;
+
 
   //faz a autenticação do bloco que vamos operar
   status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, bloco, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
@@ -101,8 +122,15 @@ void loop()
     return;
   }
 
-  leituraDados();
-
+  //chama o menu e recupera a opção desejada
+  int opcao = menu();
+  
+  if(opcao == 0) 
+    leituraDados();
+  else {
+    Serial.println(F("Opção Incorreta!"));
+    return;
+  }
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
   // "stop" a encriptação do PCD, deve ser chamado após a comunicação com autenticação, caso contrário novas comunicações não poderão ser iniciadas
