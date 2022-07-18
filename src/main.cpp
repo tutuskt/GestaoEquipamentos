@@ -35,7 +35,7 @@ void setup() {
   // Inicia MFRC522
   mfrc522.PCD_Init(); 
 
-  setupMQTT();
+  //setupMQTT();
 }
 
 //faz a leitura dos dados do cartão/tag
@@ -103,20 +103,22 @@ void connect_wifi(){
   while (WiFi.status() != WL_CONNECTED) {
     WiFi.begin(SSID, PWD);
     digitalWrite(pinVermelho, HIGH);
+    delay(5000); //espera conectar para o status mudar
   }
+  Serial.print("Connected.");
   digitalWrite(pinVermelho, LOW);
   digitalWrite(pinVerde, HIGH);
   delay(5000);
-  Serial.print("Connected.");
+  digitalWrite(pinVerde, LOW);
 }
 
-void setupMQTT(){
-  WiFiClient wifiClient;
-  PubSubClient mqttClient(wifiClient); 
-  char *mqttServer ="k3s.cos.ufrj.br";
-  int mqttPort = 30150;
-  mqttClient.setServer(mqttServer, mqttPort);
-}
+// void setupMQTT(){
+//   WiFiClient wifiClient;
+//   PubSubClient mqttClient(wifiClient); 
+//   char *mqttServer ="k3s.cos.ufrj.br";
+//   int mqttPort = 30150;
+//   mqttClient.setServer(mqttServer, mqttPort);
+// }
 
 void loop() 
 {
