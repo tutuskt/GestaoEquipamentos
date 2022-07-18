@@ -15,6 +15,8 @@
 
 const char *SSID = "TP-Link 2";
 const char *PWD = "@@AP702@2020";
+const char *brokerUser = "cos603";
+const char *brokerPass = ".2022pesc";
 
 //esse objeto 'chave' é utilizado para autenticação
 MFRC522::MIFARE_Key key;
@@ -23,6 +25,11 @@ MFRC522::StatusCode status;
 
 // Definicoes pino modulo RC522
 MFRC522 mfrc522(SS_PIN, RST_PIN); 
+
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient); 
+char *mqttServer ="k3s.cos.ufrj.br";
+int mqttPort = 30150;
 
 void setup() {
   // Inicia a serial
@@ -35,64 +42,40 @@ void setup() {
   // Inicia MFRC522
   mfrc522.PCD_Init(); 
 
-  //setupMQTT();
+  //setup mqtt broker
+  mqttClient.setServer(mqttServer, mqttPort);
+}
+
+unsigned long getID(){
+  if ( ! mfrc522.PICC_ReadCardSerial()) { //Since a PICC placed get Serial and continue
+    return -1;
+  }
+  unsigned long hex_num;
+  hex_num =  mfrc522.uid.uidByte[0] << 24;
+  hex_num += mfrc522.uid.uidByte[1] << 16;
+  hex_num += mfrc522.uid.uidByte[2] <<  8;
+  hex_num += mfrc522.uid.uidByte[3];
+  mfrc522.PICC_HaltA(); // Stop reading
+  return hex_num;
 }
 
 //faz a leitura dos dados do cartão/tag
-void leituraDados()
+unsigned long leituraDados()
 {
-  // Mensagens iniciais no serial monitor
-  Serial.println("\nAproxime o seu cartao do leitor...\n");
-
   //imprime os detalhes tecnicos do cartão/tag
-  mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid)); 
-
-  //Prepara a chave - todas as chaves estão configuradas para FFFFFFFFFFFFh (Padrão de fábrica).
-  for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
-
-  //buffer para colocar os dados lidos
-  byte buffer[SIZE_BUFFER] = {0};
-
-  //bloco que faremos a operação
-  byte bloco = 1;
-  byte tamanho = SIZE_BUFFER;
-
-  //faz a autenticação do bloco que vamos operar
-  status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, bloco, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
-  if (status != MFRC522::STATUS_OK) {
-    Serial.print(F("Authentication failed: "));
-    Serial.println(mfrc522.GetStatusCodeName(status));
-    digitalWrite(pinVermelho, HIGH);
-    delay(1000);
-    digitalWrite(pinVermelho, LOW);
-    return;
+  unsigned long hex_num = -1; //Since a PICC placed get Serial and continue  
+  hex_num =  mfrc522.uid.uidByte[0] << 24;
+  hex_num += mfrc522.uid.uidByte[1] << 16;
+  hex_num += mfrc522.uid.uidByte[2] <<  8;
+  hex_num += mfrc522.uid.uidByte[3];
+  mfrc522.PICC_HaltA(); // Stop reading
+  
+  if(hex_num != -1){
+    Serial.print("Card detected, UID: "); 
+    Serial.println(hex_num);
   }
-
-  //faz a leitura dos dados do bloco
-  status = mfrc522.MIFARE_Read(bloco, buffer, &tamanho);
-  if (status != MFRC522::STATUS_OK) {
-    Serial.print(F("Reading failed: "));
-    Serial.println(mfrc522.GetStatusCodeName(status));
-    digitalWrite(pinVermelho, HIGH);
-    delay(1000);
-    digitalWrite(pinVermelho, LOW);
-    return;
-  }
-  else{
-      digitalWrite(pinVerde, HIGH);
-      delay(1000);
-      digitalWrite(pinVerde, LOW);
-  }
-
-  Serial.print(F("\nDados bloco ["));
-  Serial.print(bloco);Serial.print(F("]: "));
-
-  //imprime os dados lidos
-  for (uint8_t i = 0; i < MAX_SIZE_BLOCK; i++)
-  {
-      Serial.write(buffer[i]);
-  }
-  Serial.println(" ");
+  return hex_num;
+   //mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid)); 
 }
 
 //Conecta o esp32 ao wifi
@@ -105,20 +88,27 @@ void connect_wifi(){
     digitalWrite(pinVermelho, HIGH);
     delay(5000); //espera conectar para o status mudar
   }
-  Serial.print("Connected.");
+  Serial.println("Connected.");
   digitalWrite(pinVermelho, LOW);
   digitalWrite(pinVerde, HIGH);
   delay(5000);
   digitalWrite(pinVerde, LOW);
 }
 
-// void setupMQTT(){
-//   WiFiClient wifiClient;
-//   PubSubClient mqttClient(wifiClient); 
-//   char *mqttServer ="k3s.cos.ufrj.br";
-//   int mqttPort = 30150;
-//   mqttClient.setServer(mqttServer, mqttPort);
-// }
+//Conexão com o broker
+void reconnect() {
+  Serial.println("Connecting to MQTT Broker...");
+  while (!mqttClient.connected()) {
+      Serial.println("Reconnecting to MQTT Broker..");
+      String clientId = "ESP32Client-";
+      clientId += String(random(0xffff), HEX);
+      
+      if (mqttClient.connect(clientId.c_str(),brokerUser, brokerPass)) {
+        Serial.println("Connected.");
+      }
+      
+  }
+}
 
 void loop() 
 {
@@ -126,7 +116,11 @@ void loop()
     connect_wifi();
   }
   
-   // Aguarda a aproximacao do cartao
+  if (!mqttClient.connected())
+    reconnect();
+  mqttClient.loop();
+
+  //Aguarda a aproximacao do cartao
   if ( ! mfrc522.PICC_IsNewCardPresent()) 
   {
     return;
@@ -137,7 +131,15 @@ void loop()
     return;
   }
 
-  leituraDados();
+  // Mensagens iniciais no serial monitor
+  Serial.println("\nAproxime o seu cartao do leitor...\n");
+
+  unsigned long uid = leituraDados();
+  const char *topic = "EQUIPAMENTOS";
+  String macAddress = WiFi.macAddress();
+  String env = "MacAddress:";
+  env += macAddress;
+  mqttClient.publish(topic, env.c_str());
 
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
