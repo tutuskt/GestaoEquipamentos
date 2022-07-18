@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <mfrc522.h> //biblioteca responsável pela comunicação com o módulo RFID-RC522
 #include <SPI.h> //biblioteca para comunicação do barramento SPI
+#include <WiFi.h>
+#include <PubSubClient.h>
 
 #define SS_PIN    21
 #define RST_PIN   22
@@ -10,6 +12,9 @@
 
 #define pinVerde     12
 #define pinVermelho  32
+
+const char *SSID = "TP-Link 2";
+const char *PWD = "@@AP702@2020";
 
 //esse objeto 'chave' é utilizado para autenticação
 MFRC522::MIFARE_Key key;
@@ -29,14 +34,16 @@ void setup() {
   
   // Inicia MFRC522
   mfrc522.PCD_Init(); 
-  // Mensagens iniciais no serial monitor
-  Serial.println("\nAproxime o seu cartao do leitor...\n");
 
+  setupMQTT();
 }
 
 //faz a leitura dos dados do cartão/tag
 void leituraDados()
 {
+  // Mensagens iniciais no serial monitor
+  Serial.println("\nAproxime o seu cartao do leitor...\n");
+
   //imprime os detalhes tecnicos do cartão/tag
   mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid)); 
 
@@ -88,8 +95,35 @@ void leituraDados()
   Serial.println(" ");
 }
 
+//Conecta o esp32 ao wifi
+void connect_wifi(){
+
+  Serial.print("Connecting to ");
+  Serial.println(SSID);  
+  while (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(SSID, PWD);
+    digitalWrite(pinVermelho, HIGH);
+  }
+  digitalWrite(pinVermelho, LOW);
+  digitalWrite(pinVerde, HIGH);
+  delay(5000);
+  Serial.print("Connected.");
+}
+
+void setupMQTT(){
+  WiFiClient wifiClient;
+  PubSubClient mqttClient(wifiClient); 
+  char *mqttServer ="k3s.cos.ufrj.br";
+  int mqttPort = 30150;
+  mqttClient.setServer(mqttServer, mqttPort);
+}
+
 void loop() 
 {
+  if(WiFi.status() != WL_CONNECTED){
+    connect_wifi();
+  }
+  
    // Aguarda a aproximacao do cartao
   if ( ! mfrc522.PICC_IsNewCardPresent()) 
   {
