@@ -45,20 +45,26 @@ void log(const char *msg, const char *end = "\n")
 }
 
 //faz a leitura dos dados do cartão/tag
-unsigned long leituraDados()
+String leituraDados()
 {
-  unsigned long hex_num = -1; //Since a PICC placed get Serial and continue  
-  hex_num =  mfrc522.uid.uidByte[0] << 24;
-  hex_num += mfrc522.uid.uidByte[1] << 16;
-  hex_num += mfrc522.uid.uidByte[2] <<  8;
-  hex_num += mfrc522.uid.uidByte[3];
-  mfrc522.PICC_HaltA(); // Stop reading
-  
-  if(hex_num != -1){
-    Serial.print("Card detected, UID: "); 
-    Serial.println(hex_num);
+  // unsigned long hex_num = -1; //Since a PICC placed get Serial and continue  
+  // hex_num =  mfrc522.uid.uidByte[0] << 24;
+  // hex_num += mfrc522.uid.uidByte[1] << 16;
+  // hex_num += mfrc522.uid.uidByte[2] <<  8;
+  // hex_num += mfrc522.uid.uidByte[3];
+  // mfrc522.PICC_HaltA(); // Stop reading
+  String conteudo = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) 
+  {
+     conteudo.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
+     conteudo.concat(String(mfrc522.uid.uidByte[i], HEX));
   }
-  return hex_num;
+
+    Serial.print("Card detected, UID: "); 
+    conteudo.toUpperCase();
+    Serial.println(conteudo.substring(1));
+
+  return conteudo;
    //mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid)); 
 }
 
@@ -112,7 +118,7 @@ void connectMqtt() {
   }
 }
 
-void mqttPublish(unsigned long uid){
+void mqttPublish(String uid){
   
   StaticJsonDocument<200> doc;
   char json_buffer[200];
@@ -190,24 +196,21 @@ void loop()
 
   //Aguarda a aproximacao do cartao
   if ( ! mfrc522.PICC_IsNewCardPresent()) 
-  {
-    return;
-  }
-  // Seleciona um dos cartoes
-  if ( ! mfrc522.PICC_ReadCardSerial()) 
-  {
+  {    
     return;
   }
 
   // Mensagens iniciais no serial monitor
   Serial.println("\nAproxime o seu cartao do leitor...\n");
 
-  unsigned long uid = leituraDados();
+  // Seleciona um dos cartoes
+  if ( ! mfrc522.PICC_ReadCardSerial()) 
+  {
+    return;
+  }
+
+  String uid = leituraDados();
   mqttPublish(uid);
-  // String macAddress = WiFi.macAddress();
-  // String env = "MacAddress:";
-  // env += macAddress;
-  // mqttClient.publish(topic, env.c_str());
 
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
