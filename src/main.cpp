@@ -5,6 +5,7 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <UUID.h>
+#include <Huddle.h>
 
 #define SS_PIN    21
 #define RST_PIN   22
@@ -17,8 +18,6 @@
 
 const char *SSID = "TP-Link 2";
 const char *PWD = "@@AP702@2020";
-const char *brokerUser = "cos603";
-const char *brokerPass = ".2022pesc";
 
 //esse objeto 'chave' é utilizado para autenticação
 MFRC522::MIFARE_Key key;
@@ -30,8 +29,7 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient); 
-char *mqttServer ="k3s.cos.ufrj.br";
-int mqttPort = 30150;
+
 const char *topic = "EQUIPAMENTOS";
 
 String MacAddress;
@@ -101,7 +99,7 @@ void connectMqtt() {
       String clientId = "ESP32Client-";
       clientId += String(random(0xffff), HEX);
       
-      if (mqttClient.connect(clientId.c_str(),brokerUser, brokerPass)) {
+      if (mqttClient.connect(clientId.c_str(),BROKER_USERNAME, BROKER_PASSWORD)) {
         log("[INFO] Connected.");
       }
       else
@@ -179,12 +177,14 @@ void testPublish(String uid){
   if (!getLocalTime(&timeinfo)){
     log("[INFO] Data e Hora não foi coletada");
       dataHora = Vazio.c_str(); 
+      Serial.print("Data e hora: ");
       Serial.println(dataHora);
     
   }
   else {
         strftime(dataHorabuffer, sizeof(dataHorabuffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
         dataHora = String(dataHorabuffer);
+        Serial.print("Data e hora: ");
         Serial.println(dataHora);
       }
 
@@ -216,10 +216,18 @@ void setup() {
   mfrc522.PCD_Init(); 
 
   //setup mqtt broker
-  mqttClient.setServer(mqttServer, mqttPort);
+  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+
+  //Connect to Wifi
+  while(WiFi.status() != WL_CONNECTED){
+    connect_wifi();
+  }
+
+  // Init and get the time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   // Mensagens iniciais no serial monitor
-  //Serial.println("\nAproxime o seu cartao do leitor...\n");
+  Serial.println("\nAproxime o seu cartao do leitor...\n");
 }
 
 void loop() 
@@ -232,26 +240,24 @@ void loop()
   //   connectMqtt();
   // mqttClient.loop();
   
-  //Aguarda a aproximação do cartao
-  CurrentCardPresentStatus = mfrc522.PICC_IsNewCardPresent(); 
+  //Aguarda a aproximação do cartao 
+  CurrentCardPresentStatus = mfrc522.PICC_IsNewCardPresent();
 
   if (CurrentCardPresentStatus != lastCardPresentStatus) {
-    
     if (CurrentCardPresentStatus == true) {
-      if(! mfrc522.PICC_ReadCardSerial()){
-        return;
-      }
-      Serial.println("CARD PRESENT");  
+      Serial.println("[INFO] Lendo tag do equipamento...");  
       String uid = leituraDados();
       testPublish(uid);
-    } 
+      Serial.println("------------------------------------------\n");
+    }
     else {
-      Serial.println("NO CARD");  
+      Serial.println("[INFO] Equipamento saindo do deck");  
       testPublish("");
+      Serial.println("------------------------------------------\n");
     }
   }
 
-  lastCardPresentStatus = CurrentCardPresentStatus;
+   lastCardPresentStatus = CurrentCardPresentStatus;
 
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
