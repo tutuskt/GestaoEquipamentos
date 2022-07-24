@@ -35,6 +35,9 @@ int mqttPort = 30150;
 const char *topic = "EQUIPAMENTOS";
 
 String MacAddress;
+
+bool CurrentCardPresentStatus = false;         // current state of the button
+bool lastCardPresentStatus = false;     // previous state of the button
 /*
  *  Logging wrapper
  */
@@ -47,12 +50,6 @@ void log(const char *msg, const char *end = "\n")
 //faz a leitura dos dados do cartão/tag
 String leituraDados()
 {
-  // unsigned long hex_num = -1; //Since a PICC placed get Serial and continue  
-  // hex_num =  mfrc522.uid.uidByte[0] << 24;
-  // hex_num += mfrc522.uid.uidByte[1] << 16;
-  // hex_num += mfrc522.uid.uidByte[2] <<  8;
-  // hex_num += mfrc522.uid.uidByte[3];
-  // mfrc522.PICC_HaltA(); // Stop reading
   String conteudo = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) 
   {
@@ -65,7 +62,6 @@ String leituraDados()
     Serial.println(conteudo.substring(1));
 
   return conteudo;
-   //mfrc522.PICC_DumpDetailsToSerial(&(mfrc522.uid)); 
 }
 
 //Conecta o esp32 ao wifi
@@ -169,6 +165,45 @@ void mqttPublish(String uid){
   }
 }
 
+void testPublish(String uid){
+  StaticJsonDocument<200> doc;
+  char json_buffer[200];
+  struct tm timeinfo;
+  String Vazio = "VAZIO";
+  char dataHorabuffer[80];
+  String dataHora;
+  UUID idemPotencyKey;
+  
+  log("[INFO] PUBLICANDO NO BROKER");   
+
+  if (!getLocalTime(&timeinfo)){
+    log("[INFO] Data e Hora não foi coletada");
+      dataHora = Vazio.c_str(); 
+      Serial.println(dataHora);
+    
+  }
+  else {
+        strftime(dataHorabuffer, sizeof(dataHorabuffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
+        dataHora = String(dataHorabuffer);
+        Serial.println(dataHora);
+      }
+
+  idemPotencyKey.generate(); //TODO: Não está gerando um novo a cada iteração
+  //UuidCreate(&idemPotencyKey);
+  doc.clear();
+  doc["macAddress"] = MacAddress;
+  doc["dataHoraEvento"] = dataHora;
+  doc["equi_RFID"] = uid;
+  doc["idemPotencyKey"] = idemPotencyKey;
+  
+
+  serializeJsonPretty(doc, json_buffer);
+
+  log("[INFO] Mensagem publicada!\n");
+  mqttClient.loop();
+  
+}
+
 void setup() {
   // Inicia a serial
   Serial.begin(9600);
@@ -182,6 +217,9 @@ void setup() {
 
   //setup mqtt broker
   mqttClient.setServer(mqttServer, mqttPort);
+
+  // Mensagens iniciais no serial monitor
+  //Serial.println("\nAproxime o seu cartao do leitor...\n");
 }
 
 void loop() 
@@ -189,31 +227,35 @@ void loop()
   if(WiFi.status() != WL_CONNECTED){
     connect_wifi();
   }
+    
+  // if (!mqttClient.connected())
+  //   connectMqtt();
+  // mqttClient.loop();
   
-  if (!mqttClient.connected())
-    connectMqtt();
-  mqttClient.loop();
+  //Aguarda a aproximação do cartao
+  CurrentCardPresentStatus = mfrc522.PICC_IsNewCardPresent(); 
 
-  //Aguarda a aproximacao do cartao
-  if ( ! mfrc522.PICC_IsNewCardPresent()) 
-  {    
-    return;
+  if (CurrentCardPresentStatus != lastCardPresentStatus) {
+    
+    if (CurrentCardPresentStatus == true) {
+      if(! mfrc522.PICC_ReadCardSerial()){
+        return;
+      }
+      Serial.println("CARD PRESENT");  
+      String uid = leituraDados();
+      testPublish(uid);
+    } 
+    else {
+      Serial.println("NO CARD");  
+      testPublish("");
+    }
   }
 
-  // Mensagens iniciais no serial monitor
-  Serial.println("\nAproxime o seu cartao do leitor...\n");
-
-  // Seleciona um dos cartoes
-  if ( ! mfrc522.PICC_ReadCardSerial()) 
-  {
-    return;
-  }
-
-  String uid = leituraDados();
-  mqttPublish(uid);
+  lastCardPresentStatus = CurrentCardPresentStatus;
 
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
   // "stop" a encriptação do PCD, deve ser chamado após a comunicação com autenticação, caso contrário novas comunicações não poderão ser iniciadas
-  mfrc522.PCD_StopCrypto1();  
+  mfrc522.PCD_StopCrypto1();
+  
 }
