@@ -240,20 +240,27 @@ void loop()
   //   connectMqtt();
   // mqttClient.loop();
   
-  //Aguarda a aproximação do cartao 
-  CurrentCardPresentStatus = mfrc522.PICC_IsNewCardPresent();
+  byte bufferATQA[2];
+	byte bufferSize = sizeof(bufferATQA);
+  
 
+  //Aguarda a aproximação do cartao 
+  CurrentCardPresentStatus = !mfrc522.PICC_WakeupA(bufferATQA, &bufferSize); //Esse cara resolve tudo, NUNCA USAR PICC_IsNewCardPresent
+  
   if (CurrentCardPresentStatus != lastCardPresentStatus) {
     if (CurrentCardPresentStatus == true) {
+      mfrc522.PICC_ReadCardSerial();
       Serial.println("[INFO] Lendo tag do equipamento...");  
       String uid = leituraDados();
       testPublish(uid);
       Serial.println("------------------------------------------\n");
+      //mfrc522.uid = NULL ;
     }
     else {
       Serial.println("[INFO] Equipamento saindo do deck");  
       testPublish("");
       Serial.println("------------------------------------------\n");
+      //mfrc522.uid.size = 0;
     }
   }
 
