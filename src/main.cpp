@@ -4,7 +4,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <UUID.h>
 #include <Huddle.h>
 
 #define SS_PIN    21
@@ -107,9 +106,9 @@ void mqttPublish(String uidEquipament, String uidPerson){
   String Vazio = "VAZIO";
   char dataHorabuffer[80];
   String dataHora;
-  //UUID idemPotencyKey;
 
   if (uidPerson == "CANCELAR"){
+    CurrentCardPresentStatus = true; //Volta ao estado anterior que o equipamento está no deck
     return;
   }
 
@@ -132,14 +131,11 @@ void mqttPublish(String uidEquipament, String uidPerson){
         Serial.println(dataHora);
       }
 
-  //idemPotencyKey.generate(); //TODO: Não está gerando um novo a cada iteração
-  //UuidCreate(&idemPotencyKey);
   doc.clear();
   doc["macAddress"] = MacAddress;
   doc["dataHoraEvento"] = dataHora;
   doc["equipamentTag"] = uidEquipament;
   doc["personTag"] = uidPerson;
-  //doc["idemPotencyKey"] = idemPotencyKey;
   
 
   serializeJsonPretty(doc, json_buffer);
@@ -179,7 +175,7 @@ String removalAuthentication(){
   byte bufferATQA[2];
 	byte bufferSize = sizeof(bufferATQA);
 
-  while(timeToReadTag != 30){
+  while(timeToReadTag != 30){  //Espera 30 segundos a leitura de outra tag
 
     digitalWrite(pinVermelho, HIGH);
 
@@ -195,7 +191,7 @@ String removalAuthentication(){
       Serial.print("[INFO] Tag do Servidor: ");
       Serial.println(personTag);
 
-      if(personTag == tagEquipament){
+      if(personTag == tagEquipament){   //Verifica se é a mesma tag, se for, entende que foi uma retirada falsa e não gera evento.
         log("[Erro] Evento de retirada cancelado!\n");
         digitalWrite(pinVermelho, LOW);
         digitalWrite(pinVerde, HIGH);
@@ -215,7 +211,7 @@ String removalAuthentication(){
     timeToReadTag++;
   }
 
-  while(count != 5){
+  while(count != 5){  //Led vermelho pisca para indicar que a leitura da tag do servidor não foi feita, gerando um evento de saída não autenticada
     digitalWrite(pinVermelho, LOW);
     delay(500);
     digitalWrite(pinVermelho, HIGH);
@@ -234,7 +230,6 @@ void testPublish(String uid){   //DESATUALIZADO! Usado apenas para testes!
   String Vazio = "VAZIO";
   char dataHorabuffer[80];
   String dataHora;
-  UUID idemPotencyKey;
   
   log("[INFO] PUBLICANDO NO BROKER");   
 
@@ -252,13 +247,10 @@ void testPublish(String uid){   //DESATUALIZADO! Usado apenas para testes!
         Serial.println(dataHora);
       }
 
-  idemPotencyKey.generate(); //TODO: Não está gerando um novo a cada iteração
-  //UuidCreate(&idemPotencyKey);
   doc.clear();
   doc["macAddress"] = MacAddress;
   doc["dataHoraEvento"] = dataHora;
   doc["equi_RFID"] = uid;
-  doc["idemPotencyKey"] = idemPotencyKey;
   
 
   serializeJsonPretty(doc, json_buffer);
@@ -330,7 +322,7 @@ void loop()
     }
     else {
       Serial.println("[INFO] Equipamento saindo do deck");  
-      String personTag = removalAuthentication();
+      String personTag = removalAuthentication();  //personTag local
       mqttPublish("", personTag);
       Serial.println("------------------------------------------\n");
     }
