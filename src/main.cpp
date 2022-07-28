@@ -34,8 +34,11 @@ const char *topic = "EQUIPAMENTOS";
 
 String MacAddress;
 
-bool CurrentCardPresentStatus = false;         // current state of the button
-bool lastCardPresentStatus = false;     // previous state of the button
+bool CurrentCardPresentStatus = false;         // estado atual do sensor
+bool lastCardPresentStatus = false;     // estado anterior do sensor
+String tagEquipament = "";
+String personTag = "";
+
 /*
  *  Logging wrapper
  */
@@ -43,23 +46,6 @@ void log(const char *msg, const char *end = "\n")
 {
   Serial.print(msg);
   Serial.print(end);
-}
-
-//faz a leitura dos dados do cartão/tag
-String leituraDados()
-{
-  String conteudo = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) 
-  {
-     conteudo.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
-     conteudo.concat(String(mfrc522.uid.uidByte[i], HEX));
-  }
-
-    Serial.print("Card detected, UID: "); 
-    conteudo.toUpperCase();
-    Serial.println(conteudo.substring(1));
-
-  return conteudo;
 }
 
 //Conecta o esp32 ao wifi
@@ -100,7 +86,7 @@ void connectMqtt() {
       clientId += String(random(0xffff), HEX);
       
       if (mqttClient.connect(clientId.c_str(),BROKER_USERNAME, BROKER_PASSWORD)) {
-        log("[INFO] Connected.");
+        log("[INFO] Connected.\n");
       }
       else
       {
@@ -112,7 +98,8 @@ void connectMqtt() {
   }
 }
 
-void mqttPublish(String uid){
+//Publica mensagem no broker
+void mqttPublish(String uidEquipament, String uidPerson){
   
   StaticJsonDocument<200> doc;
   char json_buffer[200];
@@ -120,8 +107,12 @@ void mqttPublish(String uid){
   String Vazio = "VAZIO";
   char dataHorabuffer[80];
   String dataHora;
-  UUID idemPotencyKey;
-  
+  //UUID idemPotencyKey;
+
+  if (uidPerson == "CANCELAR"){
+    return;
+  }
+
   log("[INFO] PUBLICANDO NO BROKER");   
 
   if (!mqttClient.connected())
@@ -141,13 +132,14 @@ void mqttPublish(String uid){
         Serial.println(dataHora);
       }
 
-  idemPotencyKey.generate(); //TODO: Não está gerando um novo a cada iteração
+  //idemPotencyKey.generate(); //TODO: Não está gerando um novo a cada iteração
   //UuidCreate(&idemPotencyKey);
   doc.clear();
   doc["macAddress"] = MacAddress;
   doc["dataHoraEvento"] = dataHora;
-  doc["equi_RFID"] = uid;
-  doc["idemPotencyKey"] = idemPotencyKey;
+  doc["equipamentTag"] = uidEquipament;
+  doc["personTag"] = uidPerson;
+  //doc["idemPotencyKey"] = idemPotencyKey;
   
 
   serializeJsonPretty(doc, json_buffer);
@@ -163,7 +155,79 @@ void mqttPublish(String uid){
   }
 }
 
-void testPublish(String uid){
+//Faz a leitura dos dados do cartão/tag
+String readTagUid()
+{
+  String conteudo = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) 
+  {
+     conteudo.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
+     conteudo.concat(String(mfrc522.uid.uidByte[i], HEX));
+  }
+
+    //Serial.print("Card detected, UID: "); 
+    conteudo.toUpperCase();
+
+  return conteudo.substring(1);
+}
+
+String removalAuthentication(){
+
+  int count = 0;
+  int timeToReadTag = 0;
+
+  byte bufferATQA[2];
+	byte bufferSize = sizeof(bufferATQA);
+
+  while(timeToReadTag != 30){
+
+    digitalWrite(pinVermelho, HIGH);
+
+    if(!mfrc522.PICC_WakeupA(bufferATQA, &bufferSize)){    
+      if(!mfrc522.PICC_ReadCardSerial()){
+        digitalWrite(pinVermelho, LOW);
+        return "";
+      }
+
+      personTag = readTagUid();
+      Serial.print("[INFO] Tag do Equipamento: ");
+      Serial.println(tagEquipament);
+      Serial.print("[INFO] Tag do Servidor: ");
+      Serial.println(personTag);
+
+      if(personTag == tagEquipament){
+        log("[Erro] Evento de retirada cancelado!\n");
+        digitalWrite(pinVermelho, LOW);
+        digitalWrite(pinVerde, HIGH);
+        delay(2000);
+        digitalWrite(pinVerde, LOW);
+        return "CANCELAR";
+      }
+
+      digitalWrite(pinVermelho, LOW);
+      digitalWrite(pinVerde, HIGH);
+      delay(2000);
+      digitalWrite(pinVerde, LOW);
+      return personTag;
+    }
+    
+    delay(1000);
+    timeToReadTag++;
+  }
+
+  while(count != 5){
+    digitalWrite(pinVermelho, LOW);
+    delay(500);
+    digitalWrite(pinVermelho, HIGH);
+    delay(500);
+    count++;
+  }
+
+  digitalWrite(pinVermelho, LOW);
+  return "";
+}
+
+void testPublish(String uid){   //DESATUALIZADO! Usado apenas para testes!
   StaticJsonDocument<200> doc;
   char json_buffer[200];
   struct tm timeinfo;
@@ -198,7 +262,7 @@ void testPublish(String uid){
   
 
   serializeJsonPretty(doc, json_buffer);
-
+  Serial.println(json_buffer);
   log("[INFO] Mensagem publicada!\n");
   mqttClient.loop();
   
@@ -223,6 +287,10 @@ void setup() {
     connect_wifi();
   }
 
+  if (!mqttClient.connected()){
+    connectMqtt();
+  }
+
   // Init and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
@@ -236,31 +304,35 @@ void loop()
     connect_wifi();
   }
     
-  // if (!mqttClient.connected())
-  //   connectMqtt();
-  // mqttClient.loop();
+  if (!mqttClient.connected()){
+    connectMqtt();
+  }
+
+  mqttClient.loop();
   
   byte bufferATQA[2];
 	byte bufferSize = sizeof(bufferATQA);
-  
 
   //Aguarda a aproximação do cartao 
   CurrentCardPresentStatus = !mfrc522.PICC_WakeupA(bufferATQA, &bufferSize); //Esse cara resolve tudo, NUNCA USAR PICC_IsNewCardPresent
   
   if (CurrentCardPresentStatus != lastCardPresentStatus) {
     if (CurrentCardPresentStatus == true) {
-      mfrc522.PICC_ReadCardSerial();
+      if(!mfrc522.PICC_ReadCardSerial()){ return; }
+      if(personTag == readTagUid()){  return; }
+
       Serial.println("[INFO] Lendo tag do equipamento...");  
-      String uid = leituraDados();
-      testPublish(uid);
+      tagEquipament = readTagUid();
+      Serial.print("[INFO] Cartão detectado! UID: ");
+      Serial.println(tagEquipament);
+      mqttPublish(tagEquipament, "");
       Serial.println("------------------------------------------\n");
-      //mfrc522.uid = NULL ;
     }
     else {
       Serial.println("[INFO] Equipamento saindo do deck");  
-      testPublish("");
+      String personTag = removalAuthentication();
+      mqttPublish("", personTag);
       Serial.println("------------------------------------------\n");
-      //mfrc522.uid.size = 0;
     }
   }
 
