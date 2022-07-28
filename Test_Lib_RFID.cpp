@@ -1,3 +1,9 @@
+/* 
+Script base para a criação do main!
+
+Fonte: https://www.fernandok.com/2018/02/esp32-com-rfid-controle-de-acesso.html
+*/
+
 #include <Arduino.h>
 #include <mfrc522.h> //biblioteca responsável pela comunicação com o módulo RFID-RC522
 #include <SPI.h> //biblioteca para comunicação do barramento SPI
