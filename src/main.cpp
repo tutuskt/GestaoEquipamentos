@@ -40,6 +40,7 @@ WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient); 
 
 const char *topic = "EQUIPAMENTOS";
+const char *keepAliveTopic = "EQUIPAMENTOS.ALIVE";
 
 String MacAddress;
 
@@ -48,6 +49,7 @@ bool lastCardPresentStatus = false;     // estado anterior do sensor
 String tagEquipament = "";
 String personTag = "";
 
+int timeOfAlive = 0;   //Contador de tempo para mandar mensagem de Keep Alive
 /*
  *  Logging wrapper
  */
@@ -107,6 +109,60 @@ void connectMqtt() {
   }
 }
 
+//Publica mensagem que o ESP32 está vivo
+void keep_Alive(){
+
+  if(timeOfAlive == 20){  //Manda mensagem a cada 20 segundos
+    StaticJsonDocument<200> doc;
+    char json_buffer[200];
+    struct tm timeinfo;
+    String Vazio = "VAZIO";
+    char dataHorabuffer[80];
+    String dataHora;
+
+    timeOfAlive = 0;
+    log("[INFO] PUBLICANDO KEEP ALIVE");   
+
+    if (!mqttClient.connected())
+    {
+      connectMqtt();
+    }
+
+    if (!getLocalTime(&timeinfo)){
+      log("[INFO] Data e Hora não foi coletada");
+        dataHora = Vazio.c_str(); 
+        Serial.println(dataHora);
+      
+    }
+    else {
+          strftime(dataHorabuffer, sizeof(dataHorabuffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
+          dataHora = String(dataHorabuffer);
+          Serial.println(dataHora);
+        }
+
+    doc.clear();
+    doc["MACADDRESS"] = MacAddress;
+    doc["timeOfMessage"] = dataHora;
+    
+
+    serializeJsonPretty(doc, json_buffer);
+
+    if (!mqttClient.publish(keepAliveTopic, json_buffer, true))
+    {
+      log("[FALHA] BROKER INACESSIVEL!");
+      delay(500);
+    }
+    else {
+      log("[INFO] Mensagem publicada!");
+      mqttClient.loop();
+    }
+  }
+
+  delay(1000);
+  timeOfAlive++;
+
+}
+
 //Publica mensagem no broker
 void mqttPublish(String uidEquipament, String uidPerson){
   
@@ -142,8 +198,8 @@ void mqttPublish(String uidEquipament, String uidPerson){
       }
 
   doc.clear();
-  doc["macAddress"] = MacAddress;
-  doc["dataHoraEvento"] = dataHora;
+  doc["MACADDRESS"] = MacAddress;
+  doc["timeOfMessage"] = dataHora;
   doc["equipamentTag"] = uidEquipament;
   doc["personTag"] = uidPerson;
   
@@ -339,6 +395,8 @@ void loop()
   }
 
    lastCardPresentStatus = CurrentCardPresentStatus;
+
+   keep_Alive();
 
   // instrui o PICC quando no estado ACTIVE a ir para um estado de "parada"
   mfrc522.PICC_HaltA(); 
