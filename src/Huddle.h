@@ -13,8 +13,8 @@
  */
 
 // Wi-Fi
-#define WIFI_SSID "LENS-ESE"
-#define WIFI_PASSWORD "LensESE*789"
+#define WIFI_SSID "WPEE-SALA_DE_ESTUDOS_H323"
+#define WIFI_PASSWORD "ernanimotta"
 
 // MQTT
 #define MQTT_SERVER "k3s.cos.ufrj.br"

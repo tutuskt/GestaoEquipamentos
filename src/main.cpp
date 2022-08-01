@@ -28,9 +28,6 @@ Desenvolvido por: Arthur de Andrade Barcellos
 #define pinVerde     12
 #define pinVermelho  32
 
-const char *SSID = "TP-Link 2";
-const char *PWD = "@@AP702@2020";
-
 //esse objeto 'chave' é utilizado para autenticação
 MFRC522::MIFARE_Key key; //Desnecessário
 //código de status de retorno da autenticação
@@ -63,10 +60,10 @@ void log(const char *msg, const char *end = "\n")
 //Conecta o esp32 ao wifi
 void connect_wifi(){
 
-  log("[INFO] Conectando na Rede:", SSID);
+  log("[INFO] Conectando na Rede:", WIFI_SSID);
   Serial.println("");
   while (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(SSID, PWD);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     digitalWrite(pinVermelho, HIGH);
     delay(5000); //espera conectar para o status mudar
   }
