@@ -149,11 +149,12 @@ void keep_Alive(){
 
     if (!mqttClient.publish(keepAliveTopic, json_buffer, true))
     {
-      log("[FALHA] BROKER INACESSIVEL!");
+      log("[FALHA] BROKER INACESSIVEL!\n");
       delay(500);
     }
     else {
-      log("[INFO] Mensagem publicada!");
+      log("[INFO] Mensagem publicada!\n");
+      log("------------------------------------------\n");
       mqttClient.loop();
     }
   }
